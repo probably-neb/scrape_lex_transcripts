@@ -1,7 +1,5 @@
-from pprint import pprint
 import requests
 import json
-import selenium
 from selenium.common.exceptions import ElementNotInteractableException, ElementClickInterceptedException, StaleElementReferenceException
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service as FirefoxService
@@ -40,18 +38,19 @@ def print_status(*args):
     print(*args, end='', flush=True)
 
 
-options = webdriver.FirefoxOptions()
-options.headless = not args.open_browser
-
 slugs = []
 
 if args.update_slugs:
-    # selenium 4
     if args.open_browser:
+        options = webdriver.FirefoxOptions()
+
+        # selenium 4
         with webdriver.Firefox(service=FirefoxService(GeckoDriverManager().install()), options=options) as driver:
             driver.get(PODCAST_LINK)
 
             def at_last():
+                # looks for this element on the page:
+                # <h3>Sorry, there are no more episodes for this podcast.</h3>
                 end_str = "Sorry, there are no more episodes for this podcast."
                 elems = driver.find_elements(By.TAG_NAME, "h3")
                 for elem in elems:
@@ -60,11 +59,9 @@ if args.update_slugs:
                 return False
 
             def close_popup():
-                # try:
+                # closes the advertising popup that comes up occasionally
                 driver.find_element(By.ID, "modal__close").click()
                 return True
-                # except ElementNotInteractableException:
-                #     return False
 
             loaded_more_count = 0
             while True:
@@ -78,7 +75,7 @@ if args.update_slugs:
                         break
                     # wait for button to load
                     continue
-                except StaleElementReferenceException as e:
+                except StaleElementReferenceException:
                     if at_last():
                         break
                     # else:
@@ -98,10 +95,8 @@ if args.update_slugs:
                         print('found new slug:', slug)
                         slugs.append(slug)
             slugs.sort()
-                # f.write(slug+'\n')
             print("PARSED SLUGS")
     else:
-        # res = requests.get()
         first_page = get_podcast_page(1)
         last_page_num = first_page['episodes']['last_page']
         print("Total Pages:", last_page_num)
@@ -110,9 +105,9 @@ if args.update_slugs:
             podcasts = page['data']
 
             page_slugs = [pod['slug'] for pod in podcasts]
-            print_status('Current Page:', page['current_page'], 'Podcast:', page_slugs[-1])
+            print_status('Current Page:',
+                         page['current_page'], 'Podcast:', page_slugs[-1])
             slugs += page_slugs
-            # print(*page_slugs, sep='\n')
 
     # common
     with open(LINK_FILE, 'w') as f:
@@ -121,7 +116,7 @@ elif args.update_transcripts:
     try:
         with open(LINK_FILE, 'r') as f:
             slugs = f.read().split('\n')
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         import sys
         print(f"{LINK_FILE} does not exist. Run this script again with the `-s` flag to create it", file=sys.stderr)
         exit(1)
@@ -149,7 +144,6 @@ def parse_transcript(link):
         except:
             print(f"Error reading transcript of {link}")
             continue
-    # print(soup)
     return transcript
 
 
@@ -159,5 +153,3 @@ if args.update_transcripts:
         print("Parsed:", slug)
         json.dump(transcript, open(to_path(slug), 'w'), indent=4)
 
-# <h3>Sorry, there are no more episodes for this podcast.</h3>
-    # print(driver.page_source)
