@@ -1,3 +1,5 @@
+import aiohttp
+import asyncio
 import requests
 import json
 from selenium.common.exceptions import ElementNotInteractableException, ElementClickInterceptedException, StaleElementReferenceException
@@ -130,8 +132,14 @@ def to_path(slug):
     return TRANSCRIPT_DIR + '/' + slug + '.json'
 
 
-def parse_transcript(link):
-    soup = BeautifulSoup(requests.get(link).content, features='html.parser')
+async def get_slug_page_content(slug, session):
+    url = to_link(slug)
+    async with session.get(url) as response:
+        return await response.content.read()
+
+
+def parse_transcript(page_content):
+    soup = BeautifulSoup(page_content, features='html.parser')
     passages = soup.find_all(class_="transcript")
     transcript = {}
     for passage in passages:
@@ -142,14 +150,25 @@ def parse_transcript(link):
             info['text'] = passage.p.mark.text
             transcript[timestamp] = info
         except:
-            print(f"Error reading transcript of {link}")
+            print("Error reading transcript")
             continue
     return transcript
 
+async def update_slug_transcript(slug, session):
+    content = await get_slug_page_content(slug, session)
+    transcript = await asyncio.to_thread(parse_transcript,content)
+    json.dump(transcript, open(to_path(slug), 'w'), indent=4)
+    print("Parsed:", slug)
+    
+
+async def update_transcripts():
+    tasks = []
+    async with aiohttp.ClientSession() as session:
+        for slug in slugs:
+            tasks.append(asyncio.create_task(update_slug_transcript(slug, session)))
+        await asyncio.gather(*tasks)
+            
+        
 
 if args.update_transcripts:
-    for slug in slugs:
-        transcript = parse_transcript(to_link(slug))
-        print("Parsed:", slug)
-        json.dump(transcript, open(to_path(slug), 'w'), indent=4)
-
+    asyncio.run(update_transcripts())
